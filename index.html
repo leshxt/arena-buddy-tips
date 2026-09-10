@@ -109,7 +109,7 @@
         <div>
           <input type="file" id="portrait" accept="image/*" style="display:none">
           <button type="button" class="btn ghost" id="pickPortrait">Choose image</button>
-          <p class="hint">Stays small: it is resized to 96px right here in your browser.</p>
+          <p class="hint" id="portraitHint">Stays small: it is resized to 96px right here in your browser. Needed once, later tips reuse it.</p>
         </div>
       </div>
 
@@ -126,7 +126,7 @@
       </div>
 
       <label><b>Show it when the enemy team has</b></label>
-      <p class="hint" style="margin:0 0 10px">Each row is one alternative. Fill only the first slot for "any team with a Warlock". Fill two or three slots for an exact combination, every slot a different enemy (Fire Mage + Sub Rogue, or Melee + Melee).</p>
+      <p class="hint" style="margin:0 0 10px">Each row is one alternative. Fill only the first slot for "any team with a Warlock". Fill two or three slots for an exact combination, every slot a different enemy (Fire Mage + Sub Rogue, or Melee + Melee). A row without "nobody else" matches 2v2 and 3v3 alike; pick "nobody else" in the last slot to make it 2v2 only (Holy Paladin + Sub Rogue + nobody else).</p>
       <div id="conds"></div>
       <button type="button" class="btn ghost" id="addRow">+ Add row</button>
 
@@ -185,10 +185,13 @@
   // ---- gate: the invite must exist
   async function start() {
     if (!token) return gate();
-    const { data, error } = await sb.rpc("arena_buddy_invite_name", { t: token });
+    const { data, error } = await sb.rpc("arena_buddy_invite_profile", { t: token });
     if (error || !data) return gate();
-    $("inviteName").textContent = data;
-    $("author").value = data;
+    profile = data;
+    $("inviteName").textContent = data.name;
+    $("author").value = data.name;
+    if (data.twitch) $("twitch").value = data.twitch;
+    if (data.portrait) { portraitData = data.portrait; $("portraitPrev").src = data.portrait; $("pvImg").src = data.portrait; $("portraitHint").textContent = "Your portrait from last time. Choose a new image only if you want to change it."; }
     $("app").style.display = "block";
     $("patch").textContent = PATCH;
     build();
@@ -197,6 +200,7 @@
 
   // ---- form
   let portraitData = "";
+  let profile = null;
   function build() {
     const cls = $("cls"), spec = $("spec");
     Object.keys(CLASS_NAMES).forEach(k => cls.add(new Option(CLASS_NAMES[k], k)));
@@ -215,6 +219,7 @@
   function slotSelect() {
     const s = document.createElement("select");
     s.add(new Option("empty", ""));
+    s.add(new Option("nobody else (2v2 only)", "NONE"));
     const roles = document.createElement("optgroup"); roles.label = "Role";
     ROLES.forEach(r => roles.appendChild(new Option(r[1], r[0]))); s.appendChild(roles);
     const classes = document.createElement("optgroup"); classes.label = "Class";
