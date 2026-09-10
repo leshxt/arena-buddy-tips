@@ -71,6 +71,19 @@
   .foot { color: var(--faint); font-size: 12.5px; margin-top: 30px; }
   #gate { text-align: center; padding: 60px 20px; color: var(--dim); }
   #done { display: none; }
+  #mine { display: none; }
+  .mt { border: 1px solid var(--border); border-radius: 10px; background: var(--bg2); padding: 12px 14px; margin-bottom: 10px; }
+  .mt.editing { border-color: var(--accent); }
+  .mt .h { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; color: var(--dim); }
+  .mt .h b { color: var(--text); font-size: 14px; }
+  .mt .tip { margin: 6px 0 8px; font-size: 14px; }
+  .mt .tip em { color: var(--gold); font-style: normal; font-weight: 600; }
+  .mt .a { display: flex; gap: 6px; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: .04em; border: 1px solid; white-space: nowrap; }
+  .pill.new, .pill.changed { color: var(--gold); border-color: rgba(255,204,97,.5); }
+  .pill.shipped { color: var(--good); border-color: rgba(111,227,165,.5); }
+  .pill.rejected, .pill.removed { color: var(--faint); border-color: var(--border); }
+  #cancelEdit { display: none; }
   @media (max-width: 560px) { .row { grid-template-columns: 1fr; } .cond { grid-template-columns: 40px 1fr 34px; } .cond select:nth-child(3), .cond select:nth-child(4) { grid-column: 2; } }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
@@ -158,17 +171,24 @@
 
       <div class="actions">
         <button type="submit" class="btn primary" id="submit">Send tip to lesh</button>
-        <span class="hint" style="margin:0">Patch <span id="patch">12.1</span>. You can send another one right after.</span>
+        <button type="button" class="btn" id="cancelEdit">Cancel</button>
+        <span class="hint" style="margin:0" id="submitHint">Patch <span id="patch">12.1</span>. You can send another one right after.</span>
       </div>
       <div id="msg" class="msg"></div>
     </form>
 
     <div id="done" class="card">
-      <h2>Sent</h2>
-      <p>Thanks. lesh reviews every tip before it ships with the next addon update, and you'll be credited exactly as entered above.</p>
+      <h2 id="doneTitle">Sent</h2>
+      <p id="doneText">Thanks. lesh reviews every tip before it ships with the next addon update, and you'll be credited exactly as entered above.</p>
       <div class="actions">
         <button type="button" class="btn" id="again">Send another tip</button>
       </div>
+    </div>
+
+    <div id="mine" class="card">
+      <h2>Your tips</h2>
+      <p class="hint" style="margin:0 0 12px">Everything you sent from this link. Edit or delete any time; changes to a tip that is already in the addon wait for lesh and go live with the next update. Duplicate copies a tip into the form above, handy for the same comp with a different partner.</p>
+      <div id="tipList"></div>
     </div>
 
     <p class="foot">Nothing here is public. Your portrait and name are only used inside the addon, next to your tip. Questions: reply to the message that brought you here.</p>
@@ -203,6 +223,72 @@
     $("app").style.display = "block";
     $("patch").textContent = PATCH;
     build();
+    loadMine();
+  }
+
+  // ---- the streamer's own tips
+  const STATUS = { new: "waiting for lesh", shipped: "in the addon", changed: "in the addon, edit waiting", rejected: "not taken", removed: "removed with the next update" };
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const specName = (id) => { const s = SPECS.find(x => x[0] === Number(id)); return s ? s[2] + " " + CLASS_NAMES[s[1]] : String(id); };
+  const tokName = (t) => typeof t === "number" ? specName(t) : t === "NONE" ? "nobody else" : t === "ANY" ? "any enemy" : CLASS_NAMES[t] || t.charAt(0) + t.slice(1).toLowerCase();
+  const condText = (groups) => (groups || []).map(g => g.map(tokName).join(" + ")).join("  or  ");
+  let mine = [], editing = null;
+  async function loadMine() {
+    const { data, error } = await sb.rpc("arena_buddy_invite_tips", { t: token });
+    if (error) return;
+    mine = data || [];
+    renderMine();
+  }
+  function renderMine() {
+    const list = $("tipList"); list.innerHTML = "";
+    $("mine").style.display = mine.length ? "block" : "none";
+    for (const t of mine) {
+      const d = document.createElement("div"); d.className = "mt" + (editing === t.id ? " editing" : "");
+      d.innerHTML = `<div class="h"><span class="pill ${esc(t.status)}">${esc(STATUS[t.status] || t.status)}</span><b>${esc(specName(t.spec_id))}</b><span>vs ${esc(condText(t.conditions))}${t.with_conditions ? ", with " + esc(condText([t.with_conditions])) : ""}</span></div>
+        <div class="tip">${t.talent ? `<em>${esc(t.talent)}</em> ` : ""}${esc(t.tip)}</div>
+        <div class="a"><button type="button" class="btn ghost" data-edit="${t.id}">Edit</button><button type="button" class="btn ghost" data-dup="${t.id}">Duplicate</button>${t.status === "removed" ? "" : `<button type="button" class="btn ghost" data-del="${t.id}" style="color:var(--bad)">Delete</button>`}</div>`;
+      list.appendChild(d);
+    }
+  }
+  $("tipList").addEventListener("click", async (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    const t = mine.find(x => x.id === (b.dataset.edit || b.dataset.dup || b.dataset.del)); if (!t) return;
+    if (b.dataset.edit) fillForm(t, t.id);
+    if (b.dataset.dup) fillForm(t, null);
+    if (b.dataset.del) {
+      const inAddon = t.status === "shipped" || t.status === "changed";
+      if (!confirm(inAddon ? "Remove this tip? It disappears from the addon with the next update." : "Delete this tip?")) return;
+      const { error } = await sb.rpc("arena_buddy_invite_delete_tip", { t: token, tip_id: t.id });
+      if (error) return alert("That did not work: " + error.message);
+      if (editing === t.id) cancelEdit();
+      loadMine();
+    }
+  });
+  function setSlots(container, toks) {
+    const sels = [...container.querySelectorAll("select")];
+    sels.forEach((s, i) => s.value = toks && toks[i] != null ? String(toks[i]) : "");
+  }
+  function fillForm(t, id) {
+    editing = id;
+    const sp = SPECS.find(x => x[0] === Number(t.spec_id));
+    if (sp) { $("cls").value = sp[1]; $("cls").dispatchEvent(new Event("change")); $("spec").value = String(sp[0]); }
+    $("conds").innerHTML = "";
+    (t.conditions && t.conditions.length ? t.conditions : [["ANY"]]).forEach(g => { addRow(); setSlots($("conds").lastElementChild, g); });
+    setSlots($("withRow"), t.with_conditions || []);
+    $("talent").value = t.talent || ""; $("tip").value = t.tip || "";
+    preview();
+    $("done").style.display = "none"; $("form").style.display = "block";
+    $("submit").textContent = id ? "Save changes" : "Send tip to lesh";
+    $("cancelEdit").style.display = id ? "inline-flex" : "none";
+    $("submitHint").textContent = id ? "Editing a tip from your list below." : "Copied from your list. Change what you like and send it as a new tip.";
+    renderMine();
+    $("form").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  function cancelEdit() {
+    editing = null;
+    $("submit").textContent = "Send tip to lesh"; $("cancelEdit").style.display = "none";
+    $("submitHint").innerHTML = 'Patch <span id="patch">' + PATCH + '</span>. You can send another one right after.';
+    renderMine();
   }
   function gate() { $("gate").style.display = "block"; }
 
@@ -224,7 +310,8 @@
     ["author", "twitch", "tip", "talent"].forEach(id => $(id).addEventListener("input", preview));
     preview();
     $("form").addEventListener("submit", submit);
-    $("again").addEventListener("click", () => { $("done").style.display = "none"; $("form").style.display = "block"; $("tip").value = ""; preview(); });
+    $("cancelEdit").addEventListener("click", () => { cancelEdit(); $("tip").value = ""; $("talent").value = ""; preview(); });
+    $("again").addEventListener("click", () => { $("done").style.display = "none"; $("form").style.display = "block"; $("tip").value = ""; $("talent").value = ""; preview(); });
   }
 
   function slotSelect(partner) {
@@ -292,16 +379,31 @@
     const tip = $("tip").value.trim(), author = $("author").value.trim();
     if (!author) return fail("Please enter the name that should appear in game.");
     if (tip.length < 20) return fail("The tip is a bit short. Two sentences is perfect.");
-    $("submit").disabled = true; $("submit").textContent = "Sending …";
+    const wasEdit = editing;
+    $("submit").disabled = true; $("submit").textContent = wasEdit ? "Saving …" : "Sending …";
     const row = {
       token, author, twitch: $("twitch").value.trim() || null, portrait: portraitData || null,
       spec_id: Number($("spec").value), conditions: conditions(), with_conditions: withConditions(), talent: $("talent").value.trim() || null,
       tip, patch: PATCH,
     };
-    const { error } = await sb.from("arena_buddy_tips").insert(row);
-    $("submit").disabled = false; $("submit").textContent = "Send tip to lesh";
+    let error;
+    if (wasEdit) {
+      const changes = { spec_id: row.spec_id, conditions: row.conditions, with_conditions: row.with_conditions, talent: row.talent || "", tip, twitch: row.twitch || "", portrait: row.portrait || "" };
+      ({ error } = await sb.rpc("arena_buddy_invite_update_tip", { t: token, tip_id: wasEdit, changes }));
+    } else {
+      ({ error } = await sb.from("arena_buddy_tips").insert(row));
+    }
+    $("submit").disabled = false; $("submit").textContent = wasEdit ? "Save changes" : "Send tip to lesh";
     if (error) return fail("That did not go through: " + error.message + ". Try again, or send the tip to lesh directly.");
+    const old = wasEdit && mine.find(x => x.id === wasEdit);
+    const wasLive = old && (old.status === "shipped" || old.status === "changed");
+    $("doneTitle").textContent = wasEdit ? "Saved" : "Sent";
+    $("doneText").textContent = wasEdit
+      ? (wasLive ? "Saved. The old version stays in the addon until lesh ships your edit with the next update." : "Saved. lesh sees the new version.")
+      : "Thanks. lesh reviews every tip before it ships with the next addon update, and you'll be credited exactly as entered above.";
+    cancelEdit();
     $("form").style.display = "none"; $("done").style.display = "block"; window.scrollTo({ top: 0, behavior: "smooth" });
+    loadMine();
   }
   function fail(text) { const m = $("msg"); m.className = "msg bad"; m.textContent = text; }
 
