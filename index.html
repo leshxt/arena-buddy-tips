@@ -39,6 +39,7 @@
   textarea { min-height: 96px; resize: vertical; }
   .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .cond { display: grid; grid-template-columns: 44px 1fr 1fr 1fr 34px; gap: 8px; align-items: center; margin-bottom: 8px; }
+  #withRow { grid-template-columns: 44px 1fr 1fr; }
   .cond .lab { font-family: var(--font-display); font-size: 11px; letter-spacing: 0.1em; color: var(--gold); text-transform: uppercase; }
   .cond button { height: 38px; }
   .hint { font-size: 12.5px; color: var(--faint); margin: 6px 0 0; }
@@ -133,6 +134,10 @@
       <div id="conds"></div>
       <button type="button" class="btn ghost" id="addRow">+ Add row</button>
 
+      <label><b>And your own partners are</b> (optional)</label>
+      <p class="hint" style="margin:0 0 10px">Leave empty if the tip works with any partners. Otherwise pick roles, classes or exact specs; both slots must fit your team.</p>
+      <div class="cond" id="withRow"></div>
+
       <label for="talent"><b>Talent or spell</b> the tip is about (optional, shown as a small icon next to your name)</label>
       <input type="text" id="talent" maxlength="60" placeholder="Reverse Magic">
 
@@ -210,6 +215,9 @@
     const fillSpecs = () => { spec.innerHTML = ""; SPECS.filter(s => s[1] === cls.value).forEach(s => spec.add(new Option(s[2], s[0]))); };
     cls.addEventListener("change", fillSpecs); fillSpecs();
     addRow();
+    const wr = $("withRow");
+    const wl = document.createElement("div"); wl.className = "lab"; wl.textContent = "WITH"; wr.appendChild(wl);
+    for (let i = 0; i < 2; i++) wr.appendChild(slotSelect(true));
     $("addRow").addEventListener("click", () => { if ($("conds").children.length < MAX_ROWS) addRow(); });
     $("pickPortrait").addEventListener("click", () => $("portrait").click());
     $("portrait").addEventListener("change", onPortrait);
@@ -219,10 +227,10 @@
     $("again").addEventListener("click", () => { $("done").style.display = "none"; $("form").style.display = "block"; $("tip").value = ""; preview(); });
   }
 
-  function slotSelect() {
+  function slotSelect(partner) {
     const s = document.createElement("select");
     s.add(new Option("empty", ""));
-    s.add(new Option("nobody else (2v2 only)", "NONE"));
+    if (!partner) s.add(new Option("nobody else (2v2 only)", "NONE"));
     const roles = document.createElement("optgroup"); roles.label = "Role";
     ROLES.forEach(r => roles.appendChild(new Option(r[1], r[0]))); s.appendChild(roles);
     const classes = document.createElement("optgroup"); classes.label = "Class";
@@ -248,6 +256,10 @@
       if (toks.length) groups.push(toks);
     });
     return groups.length ? groups : [["ANY"]];
+  }
+  function withConditions() {
+    const toks = [...$("withRow").querySelectorAll("select")].map(s => s.value).filter(Boolean).map(v => /^\d+$/.test(v) ? Number(v) : v);
+    return toks.length ? toks : null;
   }
 
   function onPortrait(e) {
@@ -283,7 +295,7 @@
     $("submit").disabled = true; $("submit").textContent = "Sending …";
     const row = {
       token, author, twitch: $("twitch").value.trim() || null, portrait: portraitData || null,
-      spec_id: Number($("spec").value), conditions: conditions(), talent: $("talent").value.trim() || null,
+      spec_id: Number($("spec").value), conditions: conditions(), with_conditions: withConditions(), talent: $("talent").value.trim() || null,
       tip, patch: PATCH,
     };
     const { error } = await sb.from("arena_buddy_tips").insert(row);
