@@ -56,7 +56,10 @@
   .counter.over { color: var(--bad); }
   .preview { border: 1px solid var(--border); border-radius: 10px; background: var(--bg2); padding: 12px 14px; display: grid; grid-template-columns: 30px 1fr; gap: 10px; align-items: start; margin-top: 8px; }
   .preview img { width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--gold); object-fit: cover; }
-  .preview .n { font-weight: 600; font-size: 14px; line-height: 1.2; }
+  .preview .n { font-weight: 600; font-size: 14px; line-height: 1.2; display: flex; align-items: center; gap: 8px; }
+  .preview .n span { flex: 1; }
+  .preview .tal { display: none; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; color: var(--gold); letter-spacing: .02em; }
+  .preview .tal i { width: 16px; height: 16px; border-radius: 3px; background: linear-gradient(135deg, #3b2f14, #8a6a24); border: 1px solid rgba(255,204,97,.6); display: inline-block; }
   .preview .c { font-size: 11px; color: var(--faint); }
   .preview .t { font-size: 13px; color: var(--dim); margin-top: 4px; }
   .preview .sec { grid-column: 1 / -1; font-family: var(--font-display); font-size: 11px; letter-spacing: .12em; color: var(--good); }
@@ -142,7 +145,7 @@
         <div class="sec">EXPERT TIP</div>
         <img id="pvImg" alt="" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='30' height='30'%3E%3C/svg%3E">
         <div>
-          <div class="n" id="pvName">Your name</div>
+          <div class="n"><span id="pvName">Your name</span><span class="tal" id="pvTal"><i></i><b id="pvTalName"></b></span></div>
           <div class="c" id="pvChan">twitch.tv/you</div>
           <div class="t" id="pvTip">Your tip appears here.</div>
         </div>
@@ -210,7 +213,7 @@
     $("addRow").addEventListener("click", () => { if ($("conds").children.length < MAX_ROWS) addRow(); });
     $("pickPortrait").addEventListener("click", () => $("portrait").click());
     $("portrait").addEventListener("change", onPortrait);
-    ["author", "twitch", "tip"].forEach(id => $(id).addEventListener("input", preview));
+    ["author", "twitch", "tip", "talent"].forEach(id => $(id).addEventListener("input", preview));
     preview();
     $("form").addEventListener("submit", submit);
     $("again").addEventListener("click", () => { $("done").style.display = "none"; $("form").style.display = "block"; $("tip").value = ""; preview(); });
@@ -266,6 +269,8 @@
     $("pvName").textContent = $("author").value || "Your name";
     $("pvChan").textContent = ($("twitch").value || "twitch.tv/you").replace(/^https?:\/\//, "").replace(/^www\./, "");
     $("pvTip").textContent = $("tip").value || "Your tip appears here.";
+    const tal = $("talent").value.trim();
+    $("pvTal").style.display = tal ? "inline-flex" : "none"; $("pvTalName").textContent = tal;
     const n = $("tip").value.length; $("count").textContent = n; $("count").parentElement.classList.toggle("over", n > 240);
   }
 
